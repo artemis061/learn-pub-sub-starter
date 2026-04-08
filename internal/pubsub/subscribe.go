@@ -14,6 +14,14 @@ const (
 	SimpleQueueTransient
 )
 
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackRequeue
+	NackDiscard
+)
+
 func DeclareAndBind(
 	conn *amqp.Connection,
 	exchange,
@@ -57,7 +65,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
@@ -91,8 +99,19 @@ func SubscribeJSON[T any](
 				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			handler(target)
-			msg.Ack(false)
+			acktype := handler(target)
+			switch acktype {
+			case Ack:
+				fmt.Println("sending Ack")
+				msg.Ack(false)
+			case NackRequeue:
+				fmt.Println("sending NackRequeu")
+				msg.Nack(false, true)
+			case NackDiscard:
+				fmt.Println("sending NackDiscard")
+				msg.Nack(false, false)
+			}
+
 		}
 	}()
 	return nil
